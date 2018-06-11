@@ -24,6 +24,13 @@ pseudocode:
 -----------
 Pseudocode for the switch that was used during the early stages of the development.
 
+## Compile
+```
+./autogen.sh
+./configure --without-gui --enable-debug --disable-wallet
+./make
+```
+
 ## Usage
 
 The modified client can be used the same way as the upstream bitcoin client. The following options were added to bitcoind:

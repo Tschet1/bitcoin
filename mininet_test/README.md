@@ -3,6 +3,7 @@
 The following describes how to setup the framework for testing the modified client in mininet and how to run the experiments.
 
 ## setup
+0. This setup assumes an active user p4 in a vm as described by p4lang/tutorials and the switch software to be installed.
 1. Add the contents of the following folders to the existing folders:
    usr -> /usr
    tutorials -> /home/p4/tutorials

@@ -1,5 +1,5 @@
 \chapter{\label{profiling}Profiling}
-In this chapter, we prove that the current state of the art bitcoin client does not scale well when the number of connected nodes is increased. First, we show general measurement on various system performance indicators. After spotting the CPU to be the possible bottleneck, we perform an in depth analysis of the runtime behaviour of the two most heavy weight threads. This leads to the insight that the inter-thread communication is the bottleneck for scaling the bitcoin client.
+In this chapter, we prove that the current state of the art bitcoin client does not scale well when the number of connected nodes is increased and is therefore not well suited for the use as a relay node. First, we show general measurement on various system performance indicators. After spotting the CPU to be the possible bottleneck, we perform an in depth analysis of the runtime behaviour of the two most heavy weight threads. This leads to the insight that the inter-thread communication is the bottleneck for scaling the bitcoin client.
 
 \begin{figure}[!hbt]
 \begin{center}
