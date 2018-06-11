@@ -3353,6 +3353,8 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
         if (!fHasMoreOrSameWork) return true; // Don't process less-work chains
         if (fTooFarAhead) return true;        // Block height is too high
 
+        //TODO: Relay: this fails currently, when the tip of the chain is not reached. To resolve this, add the requested block to the waitset.
+        //TODO: this needs to be discussed
         // Protect against DoS attacks from low-work chains.
         // If our tip is behind, a peer could try to send us
         // low-work blocks on a fake chain that we would never

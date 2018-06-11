@@ -1,0 +1,42 @@
+diff --git a/src/net.h b/src/net.h
+index 8378a303b..cd1dda236 100644
+--- a/src/net.h
++++ b/src/net.h
+@@ -38,7 +38,7 @@ class CScheduler;
+ class CNode;
+ 
+ /** Time between pings automatically sent out for latency probing and keepalive (in seconds). */
+-static const int PING_INTERVAL = 2 * 60;
++static const int PING_INTERVAL = 1;
+ /** Time after which to disconnect, after waiting for a ping response (or inactivity). */
+ static const int TIMEOUT_INTERVAL = 20 * 60;
+ /** Run the feeler connection loop once every 2 minutes or 120 seconds. **/
+diff --git a/src/net_processing.cpp b/src/net_processing.cpp
+index bf9307727..de2ced1ae 100644
+--- a/src/net_processing.cpp
++++ b/src/net_processing.cpp
+@@ -2720,6 +2720,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
+ 
+     else if (strCommand == NetMsgType::PONG)
+     {
++	LogPrintf("THROUGHPUT: PONG: %u\n", GetTimeMicros());
+         int64_t pingUsecEnd = nTimeReceived;
+         uint64_t nonce = 0;
+         size_t nAvail = vRecv.in_avail();
+@@ -3175,6 +3176,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
+         }
+         if (pto->nPingNonceSent == 0 && pto->nPingUsecStart + PING_INTERVAL * 1000000 < GetTimeMicros()) {
+             // Ping automatically sent as a latency probe & keepalive.
++	    LogPrintf("THROUGHPUT: PING: %u\n", GetTimeMicros());
+             pingSend = true;
+         }
+         if (pingSend) {
+@@ -3194,6 +3196,8 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
+             }
+         }
+ 
++	return true;
++
+         TRY_LOCK(cs_main, lockMain); // Acquire cs_main for IsInitialBlockDownload() and CNodeState()
+         if (!lockMain)
+             return true;

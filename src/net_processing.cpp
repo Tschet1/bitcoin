@@ -573,7 +573,7 @@ void PeerLogicValidation::InitializeNode(CNode *pnode) {
         LOCK(cs_main);
         mapNodeState.emplace_hint(mapNodeState.end(), std::piecewise_construct, std::forward_as_tuple(nodeid), std::forward_as_tuple(addr, std::move(addrName)));
     }
-    if(!pnode->fInbound)
+    if(!pnode->fInbound && !pnode->isRelay)
         PushNodeVersion(pnode, connman, GetTime());
 }
 
@@ -1766,7 +1766,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         pfrom->fSuccessfullyConnected = true;
     }
 
-    else if (!pfrom->fSuccessfullyConnected)
+    else if (!pfrom->fSuccessfullyConnected && !pfrom->isRelay)
     {
         // Must have a verack message before anything else
         LOCK(cs_main);
@@ -1865,6 +1865,10 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
 
+        if(pfrom->isRelay){
+            LogPrint(BCLog::RELAY, "Relay: received INV!\n");
+        }
+
         bool fBlocksOnly = !fRelayTxes;
 
         // Allow whitelisted peers to send data other than blocks in blocks only mode if whitelistrelay is true
@@ -1881,6 +1885,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 return true;
 
             bool fAlreadyHave = AlreadyHave(inv);
+
             LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom->GetId());
 
             if (inv.type == MSG_TX) {
@@ -1889,7 +1894,17 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
             if (inv.type == MSG_BLOCK) {
                 UpdateBlockAvailability(pfrom->GetId(), inv.hash);
-                if (!fAlreadyHave && !fImporting && !fReindex && !mapBlocksInFlight.count(inv.hash)) {
+                // special case with relays
+                if (pfrom->isRelay && !fAlreadyHave && !mapBlocksInFlight.count(inv.hash)){ //TODO: need more checks here?
+                    // The last NET_RELAY_SEGCOUNT_BYTES of the message is the number of fragments of the block
+                    int numSegs = 0;
+                    // TODO: is there an easier way for this?
+                    numSegs = ((uint8_t) vRecv[0]) + (((uint8_t) vRecv[1]) << 8);
+                    if(connman->netRelay && connman->netRelay->isConnected()){
+                        connman->netRelay->addInv(inv.hash, numSegs);
+                        connman->netRelay->createRGETDATAMessages(inv.hash);
+                    }
+                } else if (!fAlreadyHave && !fImporting && !fReindex && !mapBlocksInFlight.count(inv.hash)) {
                     // We used to request the full block here, but since headers-announcements are now the
                     // primary method of announcement on the network, and since, in the case that a node
                     // fell back to inv we probably have a reorg which we should get the headers for first,
@@ -2502,6 +2517,14 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock);
             if (fNewBlock) {
                 pfrom->nLastBlockTime = GetTime();
+
+                LOCK(cs_main);
+                LogPrint(BCLog::RELAY, "Relay: received new cmpctblock.\n");
+                LogPrint(BCLog::RELAY, "currently, there are %u blocks on the fly\n", mapBlocksInFlight.size());
+                //if(connman->netRelay && connman->netRelay->isConnected() && !pfrom->isRelay && ( mapBlocksInFlight.size() == 0 || connman->netRelay->isMasterNode )){
+                if(connman->netRelay && connman->netRelay->isConnected() && !pfrom->isRelay && mapBlocksInFlight.size() == 0 ){
+                    connman->netRelay->sendRINVtoSwitch(pblock->GetHash(), pfrom);
+                }
             } else {
                 LOCK(cs_main);
                 mapBlockSource.erase(pblock->GetHash());
@@ -2585,6 +2608,13 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock);
             if (fNewBlock) {
                 pfrom->nLastBlockTime = GetTime();
+                {
+                    LOCK(cs_main);
+                    LogPrint(BCLog::RELAY, "Relay: currently, there are %u blocks on the fly\n", mapBlocksInFlight.size());
+                    if(connman->netRelay && connman->netRelay->isConnected() && mapBlocksInFlight.size() == 0 && !pfrom->isRelay){
+                        connman->netRelay->sendRINVtoSwitch(resp.blockhash, pfrom);
+                    }
+                }
             } else {
                 LOCK(cs_main);
                 mapBlockSource.erase(pblock->GetHash());
@@ -2620,6 +2650,9 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
     else if (strCommand == NetMsgType::BLOCK && !fImporting && !fReindex) // Ignore blocks received while importing
     {
+        if(pfrom->isRelay)
+            LogPrint(BCLog::RELAY, "Relay: received block\n");
+
         std::shared_ptr<CBlock> pblock = std::make_shared<CBlock>();
         vRecv >> *pblock;
 
@@ -2640,6 +2673,15 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         ProcessNewBlock(chainparams, pblock, forceProcessing, &fNewBlock);
         if (fNewBlock) {
             pfrom->nLastBlockTime = GetTime();
+
+            // send to relay if is synced (no more blocks in flight) and if not coming from relay
+            {
+                LOCK(cs_main);
+                LogPrint(BCLog::RELAY, "Relay: currently, there are %u blocks on the fly\n", mapBlocksInFlight.size());
+                if(connman->netRelay && connman->netRelay->isConnected() && mapBlocksInFlight.size() == 0 && !pfrom->isRelay){
+                    connman->netRelay->sendRINVtoSwitch(hash, pfrom);
+                }
+            }
         } else {
             LOCK(cs_main);
             mapBlockSource.erase(pblock->GetHash());
@@ -2933,7 +2975,6 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
         pfrom->fDisconnect = true;
         return false;
     }
-
     // Read header
     CMessageHeader& hdr = msg.hdr;
     if (!hdr.IsValid(chainparams.MessageStart()))
@@ -3002,8 +3043,9 @@ bool PeerLogicValidation::ProcessMessages(CNode* pfrom, std::atomic<bool>& inter
     }
 
     LOCK(cs_main);
-    SendRejectsAndCheckIfBanned(pfrom, connman);
-
+    if (!pfrom->isRelay){
+        SendRejectsAndCheckIfBanned(pfrom, connman);
+    }
     return fMoreWork;
 }
 
@@ -3158,6 +3200,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
 {
     const Consensus::Params& consensusParams = Params().GetConsensus();
     {
+        //TODO: It would probably be cleaner if we add our stuff here.
         // Don't send anything until the version handshake is complete
         if (!pto->fSuccessfullyConnected || pto->fDisconnect)
             return true;
@@ -3176,6 +3219,11 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
         if (pto->nPingNonceSent == 0 && pto->nPingUsecStart + PING_INTERVAL * 1000000 < GetTimeMicros()) {
             // Ping automatically sent as a latency probe & keepalive.
             pingSend = true;
+            // check if connection to master should be terminated
+            if(connman->netRelay && connman->netRelay->isMaster() && pto->nPingUsecStart != 0){
+                LogPrint(BCLog::RELAY, "Relay: disconnect peer\n");
+                pto->CloseSocketDisconnect();
+            }
         }
         if (pingSend) {
             uint64_t nonce = 0;

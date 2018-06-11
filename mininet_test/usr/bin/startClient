@@ -1,0 +1,8 @@
+#!/bin/bash
+sleep 5
+/home/p4/bitcoin/bitcoin_client/start.sh
+/home/p4/bitcoin/bitcoin_client2/start.sh
+sleep 15
+/home/p4/bitcoin/bitcoin_client_standard/start.sh
+
+

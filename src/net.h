@@ -21,6 +21,7 @@
 #include <sync.h>
 #include <uint256.h>
 #include <threadinterrupt.h>
+#include <net_relay.h>
 
 #include <atomic>
 #include <deque>
@@ -112,6 +113,7 @@ struct CSerializedNetMsg
 class NetEventsInterface;
 class CConnman
 {
+    friend class Net_relay;
 public:
 
     enum NumConnections {
@@ -310,6 +312,7 @@ public:
     unsigned int GetReceiveFloodSize() const;
 
     void WakeMessageHandler();
+    Net_relay* netRelay;
 private:
     struct ListenSocket {
         SOCKET socket;
@@ -428,6 +431,8 @@ private:
     std::thread threadOpenAddedConnections;
     std::thread threadOpenConnections;
     std::thread threadMessageHandler;
+    std::thread threadRelayHandler;
+
 
     /** flag for deciding to connect to an extra outbound peer,
      *  in excess of nMaxOutbound
@@ -599,6 +604,7 @@ public:
 class CNode
 {
     friend class CConnman;
+    friend class Net_relay;
 public:
     // socket
     std::atomic<ServiceFlags> nServices;
@@ -641,6 +647,7 @@ public:
     bool fOneShot;
     bool m_manual_connection;
     bool fClient;
+    bool isRelay; //True if is a relay node
     const bool fInbound;
     std::atomic_bool fSuccessfullyConnected;
     std::atomic_bool fDisconnect;

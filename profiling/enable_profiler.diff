@@ -1,0 +1,50 @@
+diff --git a/client/src/net.cpp b/client/src/net.cpp
+index 3a3d3d8cc..f37146a33 100644
+--- a/client/src/net.cpp
++++ b/client/src/net.cpp
+@@ -36,6 +36,7 @@
+ 
+ 
+ #include <math.h>
++#include <gperftools/profiler.h>
+ 
+ // Dump addresses to peers.dat and banlist.dat every 15 minutes (900s)
+ #define DUMP_ADDRESSES_INTERVAL 900
+@@ -1150,6 +1151,7 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
+ 
+ void CConnman::ThreadSocketHandler()
+ {
++	ProfilerRegisterThread();
+     unsigned int nPrevNodeCount = 0;
+     bool relay_added = false;
+     while (!interruptNet)
+@@ -2046,6 +2048,7 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
+ 
+ void CConnman::ThreadMessageHandler()
+ {
++	ProfilerRegisterThread();
+     while (!flagInterruptMsgProc)
+     {
+         std::vector<CNode*> vNodesCopy;
+diff --git a/client/src/net_relay.cpp b/client/src/net_relay.cpp
+index b9c9bee6f..1a32f7c5a 100644
+--- a/client/src/net_relay.cpp
++++ b/client/src/net_relay.cpp
+@@ -10,6 +10,7 @@
+ #include <thread>
+ #include <validation.h>
+ #include <netaddress.h>
++#include <gperftools/profiler.h>
+ 
+ /**
+  * simple helper function for sending messages
+@@ -105,7 +106,8 @@ inline void sendBLOCKMessage(CNode* rnode, uint256* hash, unsigned int num, unsi
+  */
+ void Net_relay::RGETDATATimeoutHandler(uint256 hash)
+ {
+-    LogPrint(BCLog::RELAY, "Relay: start timeout handler\n");
++	ProfilerRegisterThread();
++	LogPrint(BCLog::RELAY, "Relay: start timeout handler\n");
+     while(true){
+         while(true){
+             // check every n seconds if we are still waiting for fragments

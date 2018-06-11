@@ -1,0 +1,144 @@
+%%****************************************************************************
+%** Copyright 2005 by Bernhard Tellenbach, <bernhard.tellenbach@airmail.ch>
+%** Information is provided under the terms of the
+%** GNU Free Documentation License <http://www.gnu.org/copyleft/fdl.html>
+%****************************************************************************
+%****************************************************************************
+%** Last Modification: 2005-07-11 1600
+%** 2005-07-11	Updated the syntax to match the current nomencl packet
+%****************************************************************************
+
+\chapter{\label{appendixMessagingProtocol}Relay Messaging Protocol}
+The following table shows the exact specification of the different message types used in the \textit{relay protocol}. The field sizes and the communication directions are given in the corresponding columns.
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|}
+	\hline
+	\textbf{Message Type} & \textbf{Communication} & \textbf{Size (bits)} & \textbf{Field} \\
+	\hline
+	REY	& C $\leftrightarrow$ S 	& 24		& Command (=REY) \\
+		& 		& 4		& Flag \\
+		& 		& 20		& Secret \\
+	\hline
+	INV	& M $\to$ C 	& 24		& Command (=INV) \\
+		& 		& 256	& Block hash \\
+		& 		& 16	& Segment count \\
+		\hline
+	SEG	& C $\to$ S 	& 24	& Command (=SEG) \\
+		& 				& 256	& Block hash \\
+		& 				& 16	& Segment id \\
+		\hline
+	BLK	& S $\to$ C 	& 24	& Command (=BLK)\\
+		& 				& 16	& Segment id \\
+		& 				& 499*8	& Segment data \\
+		\hline
+	BLK	& M $\to$ S 	& 24	& Command (=BLK)\\
+		& 				& 16	& Segment id \\
+		& 				& 499*8	& Segment data \\
+		&				& 16	& precomputed UDP checksum \\
+\hline
+	ADV	& C $\to$ S 	& 24	& Command (=ADV)\\
+		& 				& 256	& Block hash \\
+\hline
+	CTR	& S $\to$ C 	& 24	& Command (=CTR)\\
+		& 				& 32	& IP \\
+		& 				& 16	& port \\
+		&				& 8		& empty \\
+\hline
+	CON	& S $\to$ M 	& 24	& Command (=CON) \\
+		& 				& 8		& empty \\
+		& 				& 16	& port \\
+		& 				& 32	& IP \\
+\hline
+	UPD	& M $\to$ S 	& 24	& Command (=UPD) \\
+		& 				& 256	& Block hash \\
+\hline
+	BCL	& M $\to$ S 	& 24	& Command (=BCL) \\
+		& 				& 32	& ip \\
+	\hline
+\end{tabular}\\
+\end{center}
+M: Controller\\
+S: Switch\\
+C: Client\\
+
+
+
+
+\chapter{\label{appendix:pingClient}Ping Client Modifications}
+The following code alterations are made to create the \textit{ping client} from the regular bitcoin client. 
+
+
+\begin{diffCode}
+diff --git a/src/net.h b/src/net.h
+index 8378a303b..cd1dda236 100644
+--- a/src/net.h
++++ b/src/net.h
+@@ -38,7 +38,7 @@ class CScheduler;
+ class CNode;
+
+ /** Time between pings automatically sent out for latency probing and keepalive (in seconds). */
+-static const int PING_INTERVAL = 2 * 60;
++static const int PING_INTERVAL = 1;
+ /** Time after which to disconnect, after waiting for a ping response (or inactivity). */
+ static const int TIMEOUT_INTERVAL = 20 * 60;
+ /** Run the feeler connection loop once every 2 minutes or 120 seconds. **/
+diff --git a/src/net_processing.cpp b/src/net_processing.cpp
+index bf9307727..de2ced1ae 100644
+--- a/src/net_processing.cpp
++++ b/src/net_processing.cpp
+@@ -2720,6 +2720,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
+
+     else if (strCommand == NetMsgType::PONG)
+     {
++	LogPrintf("THROUGHPUT: PONG: %u\n", GetTimeMicros());
+         int64_t pingUsecEnd = nTimeReceived;
+         uint64_t nonce = 0;
+         size_t nAvail = vRecv.in_avail();
+@@ -3175,6 +3176,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
+         }
+         if (pto->nPingNonceSent == 0 && pto->nPingUsecStart + PING_INTERVAL * 1000000 < GetTimeMicros()) {
+             // Ping automatically sent as a latency probe & keepalive.
++	    LogPrintf("THROUGHPUT: PING: %u\n", GetTimeMicros());
+             pingSend = true;
+         }
+         if (pingSend) {
+@@ -3194,6 +3196,8 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
+             }
+         }
+
++	return true;
++
+         TRY_LOCK(cs_main, lockMain); // Acquire cs_main for IsInitialBlockDownload() and CNodeState()
+         if (!lockMain)
+             return true;	
+\end{diffCode}
+
+
+
+
+
+
+
+
+
+
+
+
+%Entries for the list of abbrevations:
+%
+%To generate the list of abbrevations, execute:
+%makeindex Thesis.nlo -s nomencl.ist -o Thesis.nls
+%
+%If you are using TeXniCenter, specify:
+%"%bm.nlo" -s nomencl.ist -o "%bm.nls"
+%as beeing the argument list for makeindex.
+%---------------------------------------------------------------------------------------------------------
+%For old nomencl package uncomment this:
+%\printglossary
+%For new nomencl package uncomment this:
+\printnomenclature
+
+\abbrev{XCA}{\markup{X}tremely \markup{C}ool \markup{A}bbrevations}
+
+

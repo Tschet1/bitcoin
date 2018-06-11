@@ -1,0 +1,13 @@
+diff --git a/client/src/util.h b/client/src/util.h
+index 92bb4d2..23e11d3 100644
+--- a/client/src/util.h
++++ b/client/src/util.h
+@@ -33,7 +33,7 @@
+ // Application startup time (used for uptime calculation)
+ int64_t GetStartupTime();
+ 
+-static const bool DEFAULT_LOGTIMEMICROS = false;
++static const bool DEFAULT_LOGTIMEMICROS = true;
+ static const bool DEFAULT_LOGIPS        = false;
+ static const bool DEFAULT_LOGTIMESTAMPS = true;
+ extern const char * const DEFAULT_DEBUGLOGFILE;

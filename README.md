@@ -1,82 +1,39 @@
-Bitcoin Core integration/staging tree
-=====================================
+btc_relay
+=========
 
-[![Build Status](https://travis-ci.org/bitcoin/bitcoin.svg?branch=master)](https://travis-ci.org/bitcoin/bitcoin)
+This is a fork of the bitcoin core repository. It contains a modified bitcoin client to support the
+SABRE framework. Additionally, it contains a controller for the SDN switch used in that framework.
 
-https://bitcoincore.org
+More information about the setup can be found in the thesis in the thesis folder.
 
-What is Bitcoin?
-----------------
+## Overview
+src:
+----
+The source code for the bitcoin client. The files net_relay.h and net_relay.cpp contain the additions to the client.
+The changes that were made to the existing code are summarised in codediff.diff.
 
-Bitcoin is an experimental digital currency that enables instant payments to
-anyone, anywhere in the world. Bitcoin uses peer-to-peer technology to operate
-with no central authority: managing transactions and issuing money are carried
-out collectively by the network. Bitcoin Core is the name of open source
-software which enables the use of this currency.
+mininet_test:
+-------------
+In the folder mininet_test are scripts to test the modified client in mininet as described in chapter 5 of the thesis.
 
-For more information, as well as an immediately useable, binary version of
-the Bitcoin Core software, see https://bitcoin.org/en/download, or read the
-[original whitepaper](https://bitcoincore.org/bitcoin.pdf).
+profiling:
+----------
+In the profiling folder there are scripts used to profile the bitcoin client as described in chapter 3 of the thesis.
 
-License
--------
+pseudocode:
+-----------
+Pseudocode for the switch that was used during the early stages of the development.
 
-Bitcoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for more
-information or see https://opensource.org/licenses/MIT.
+## Usage
 
-Development Process
--------------------
+The modified client can be used the same way as the upstream bitcoin client. The following options were added to bitcoind:
+```
+-relaytype=<type>	# Type of the node. Possible values: standard, client, master (default: standard). standard means, that
+                    # the client should run without the added modifications. Client means that the client should run as switch
+                    # client, meaning that the changes that are explained in the thesis are added. Master means that the 
+                    # software should act as the controller for a connected SDN switch.
+-relayaddr=<addr>	# IP address of the switch (default: 127.0.0.1)
+-relayport=<port> 	# Port of the switch (default: 8080)
+-relaymyport=<port>	# UDP Port used to connect to the switch (default: 0 (random port))
+```
 
-The `master` branch is regularly built and tested, but is not guaranteed to be
-completely stable. [Tags](https://github.com/bitcoin/bitcoin/tags) are created
-regularly to indicate new official, stable release versions of Bitcoin Core.
-
-The contribution workflow is described in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-The developer [mailing list](https://lists.linuxfoundation.org/mailman/listinfo/bitcoin-dev)
-should be used to discuss complicated or controversial changes before working
-on a patch set.
-
-Developer IRC can be found on Freenode at #bitcoin-core-dev.
-
-Testing
--------
-
-Testing and code review is the bottleneck for development; we get more pull
-requests than we can review and test on short notice. Please be patient and help out by testing
-other people's pull requests, and remember this is a security-critical project where any mistake might cost people
-lots of money.
-
-### Automated Testing
-
-Developers are strongly encouraged to write [unit tests](src/test/README.md) for new code, and to
-submit new unit tests for old code. Unit tests can be compiled and run
-(assuming they weren't disabled in configure) with: `make check`. Further details on running
-and extending unit tests can be found in [/src/test/README.md](/src/test/README.md).
-
-There are also [regression and integration tests](/test), written
-in Python, that are run automatically on the build server.
-These tests can be run (if the [test dependencies](/test) are installed) with: `test/functional/test_runner.py`
-
-The Travis CI system makes sure that every pull request is built for Windows, Linux, and OS X, and that unit/sanity tests are run automatically.
-
-### Manual Quality Assurance (QA) Testing
-
-Changes should be tested by somebody other than the developer who wrote the
-code. This is especially important for large or high-risk changes. It is useful
-to add a test plan to the pull request description if testing the changes is
-not straightforward.
-
-Translations
-------------
-
-Changes to translations as well as new translations can be submitted to
-[Bitcoin Core's Transifex page](https://www.transifex.com/projects/p/bitcoin/).
-
-Translations are periodically pulled from Transifex and merged into the git repository. See the
-[translation process](doc/translation_process.md) for details on how this works.
-
-**Important**: We do not accept translation changes as GitHub pull requests because the next
-pull from Transifex would automatically overwrite them again.
-
-Translators should also subscribe to the [mailing list](https://groups.google.com/forum/#!forum/bitcoin-translators).

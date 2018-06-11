@@ -514,6 +514,13 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-rpcworkqueue=<n>", strprintf("Set the depth of the work queue to service RPC calls (default: %d)", DEFAULT_HTTP_WORKQUEUE));
     strUsage += HelpMessageOpt("-server", _("Accept command line and JSON-RPC commands"));
 
+    // relay
+    strUsage += HelpMessageGroup(_("relay options:"));
+    strUsage += HelpMessageOpt("-relaytype=<type>", strprintf("Type of the node. Possible values: standard, client, master (default: %s)", NET_RELAY_NODE_STANDARD));
+    strUsage += HelpMessageOpt("-relayaddr=<addr>", strprintf("IP address of the switch (default: %s)", NET_RELAY_IP));
+    strUsage += HelpMessageOpt("-relayport=<port>", strprintf("Port of the switch (default: %s)", NET_RELAY_PORT));
+    strUsage += HelpMessageOpt("-relaymyport=<port>", strprintf("Port used to connect to the switch (default: %s)", NET_RELAY_MY_UDP_PORT));
+
     return strUsage;
 }
 
@@ -1610,8 +1617,6 @@ bool AppInitMain()
     // if pruning, unset the service bit and perform the initial blockstore prune
     // after any wallet rescanning has taken place.
     if (fPruneMode) {
-        LogPrintf("Unsetting NODE_NETWORK on prune mode\n");
-        nLocalServices = ServiceFlags(nLocalServices & ~NODE_NETWORK);
         if (!fReindex) {
             uiInterface.InitMessage(_("Pruning blockstore..."));
             PruneAndFlush();

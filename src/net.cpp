@@ -8,6 +8,7 @@
 #endif
 
 #include <net.h>
+#include <net_relay.h>
 
 #include <chainparams.h>
 #include <clientversion.h>
@@ -297,7 +298,7 @@ CNode* CConnman::FindNode(const CNetAddr& ip)
 {
     LOCK(cs_vNodes);
     for (CNode* pnode : vNodes) {
-      if (static_cast<CNetAddr>(pnode->addr) == ip) {
+      if (static_cast<CNetAddr>(pnode->addr) == ip && !pnode->isRelay) {
             return pnode;
         }
     }
@@ -308,7 +309,7 @@ CNode* CConnman::FindNode(const CSubNet& subNet)
 {
     LOCK(cs_vNodes);
     for (CNode* pnode : vNodes) {
-        if (subNet.Match(static_cast<CNetAddr>(pnode->addr))) {
+        if (subNet.Match(static_cast<CNetAddr>(pnode->addr)) && !pnode->isRelay) {
             return pnode;
         }
     }
@@ -319,7 +320,7 @@ CNode* CConnman::FindNode(const std::string& addrName)
 {
     LOCK(cs_vNodes);
     for (CNode* pnode : vNodes) {
-        if (pnode->GetAddrName() == addrName) {
+        if (pnode->GetAddrName() == addrName && !pnode->isRelay) {
             return pnode;
         }
     }
@@ -330,7 +331,7 @@ CNode* CConnman::FindNode(const CService& addr)
 {
     LOCK(cs_vNodes);
     for (CNode* pnode : vNodes) {
-        if (static_cast<CService>(pnode->addr) == addr) {
+        if (static_cast<CService>(pnode->addr) == addr && !pnode->isRelay) {
             return pnode;
         }
     }
@@ -531,6 +532,10 @@ bool CConnman::IsBanned(CSubNet subnet)
 }
 
 void CConnman::Ban(const CNetAddr& addr, const BanReason &banReason, int64_t bantimeoffset, bool sinceUnixEpoch) {
+    if(gArgs.GetArg("-relaytype", NET_RELAY_NODE_STANDARD) == NET_RELAY_NODE_MASTER && netRelay){
+        netRelay->blacklist(addr);
+    }
+
     CSubNet subNet(addr);
     Ban(subNet, banReason, bantimeoffset, sinceUnixEpoch);
 }
@@ -742,7 +747,6 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes, bool& complete
     nLastRecv = nTimeMicros / 1000000;
     nRecvBytes += nBytes;
     while (nBytes > 0) {
-
         // get current incomplete message, or create a new one
         if (vRecvMsg.empty() ||
             vRecvMsg.back().complete())
@@ -853,7 +857,6 @@ int CNetMessage::readData(const char *pch, unsigned int nBytes)
         // Allocate up to 256 KiB ahead, but never more than the total message size.
         vRecv.resize(std::min(hdr.nMessageSize, nDataPos + nCopy + 256 * 1024));
     }
-
     hasher.Write((const unsigned char*)pch, nCopy);
     memcpy(&vRecv[nDataPos], pch, nCopy);
     nDataPos += nCopy;
@@ -891,7 +894,14 @@ size_t CConnman::SocketSendData(CNode *pnode) const
             LOCK(pnode->cs_hSocket);
             if (pnode->hSocket == INVALID_SOCKET)
                 break;
-            nBytes = send(pnode->hSocket, reinterpret_cast<const char*>(data.data()) + pnode->nSendOffset, data.size() - pnode->nSendOffset, MSG_NOSIGNAL | MSG_DONTWAIT);
+            if (pnode->isRelay){
+                // TODO: add the information about the other peer to the CNode
+                LogPrint(BCLog::RELAY, "Relay: message sent\n");
+                unsigned int adlen = sizeof(netRelay->netRelayAddr);
+                nBytes = sendto(pnode->hSocket, reinterpret_cast<const char*>(data.data()) + pnode->nSendOffset, data.size() - pnode->nSendOffset, 0, (struct sockaddr *)&netRelay->netRelayAddr, adlen);
+            } else {
+                nBytes = send(pnode->hSocket, reinterpret_cast<const char*>(data.data()) + pnode->nSendOffset, data.size() - pnode->nSendOffset, MSG_NOSIGNAL | MSG_DONTWAIT);
+            }
         }
         if (nBytes > 0) {
             pnode->nLastSend = GetSystemTimeInSeconds();
@@ -1121,16 +1131,6 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
         return;
     }
 
-    if (nInbound >= nMaxInbound)
-    {
-        if (!AttemptToEvictConnection()) {
-            // No connection to evict, disconnect the new connection
-            LogPrint(BCLog::NET, "failed to find an eviction candidate - connection dropped (full)\n");
-            CloseSocket(hSocket);
-            return;
-        }
-    }
-
     NodeId id = GetNewNodeId();
     uint64_t nonce = GetDeterministicRandomizer(RANDOMIZER_ID_LOCALHOSTNONCE).Write(id).Finalize();
     CAddress addr_bind = GetBindAddress(hSocket);
@@ -1151,6 +1151,7 @@ void CConnman::AcceptConnection(const ListenSocket& hListenSocket) {
 void CConnman::ThreadSocketHandler()
 {
     unsigned int nPrevNodeCount = 0;
+    bool relay_added = false;
     while (!interruptNet)
     {
         //
@@ -1162,6 +1163,10 @@ void CConnman::ThreadSocketHandler()
             std::vector<CNode*> vNodesCopy = vNodes;
             for (CNode* pnode : vNodesCopy)
             {
+                // skip for relay
+                if (pnode->isRelay){
+                    continue;
+                }
                 if (pnode->fDisconnect)
                 {
                     // remove from vNodes
@@ -1184,6 +1189,10 @@ void CConnman::ThreadSocketHandler()
             std::list<CNode*> vNodesDisconnectedCopy = vNodesDisconnected;
             for (CNode* pnode : vNodesDisconnectedCopy)
             {
+                // skip for relay
+                if (pnode->isRelay){
+                    continue;
+                }
                 // wait until threads are done using it
                 if (pnode->GetRefCount() <= 0) {
                     bool fDelete = false;
@@ -1199,6 +1208,27 @@ void CConnman::ThreadSocketHandler()
                     if (fDelete) {
                         vNodesDisconnected.remove(pnode);
                         DeleteNode(pnode);
+                    }
+                }
+            }
+        }
+        //
+        // add Relay
+        //
+        {
+            if(netRelay){
+                if (!netRelay->isConnected()){
+                    // TODO: remove from vnodes again if this changes?
+                    netRelay->connect();
+                } else {
+                    //TODO: find better solution for this
+                    if (!relay_added){
+                        //TODO: fix this
+                        //LOCK(cs_vNodes);
+                        vNodes.push_back(netRelay->rnode);
+                        m_msgproc->InitializeNode(netRelay->rnode);
+                        relay_added = true;
+                        LogPrint(BCLog::RELAY, "Relay: relay node added\n");
                     }
                 }
             }
@@ -1233,6 +1263,12 @@ void CConnman::ThreadSocketHandler()
         for (const ListenSocket& hListenSocket : vhListenSocket) {
             FD_SET(hListenSocket.socket, &fdsetRecv);
             hSocketMax = std::max(hSocketMax, hListenSocket.socket);
+            have_fds = true;
+        }
+        //TODO: better: add to vhListenSocket
+        if (relay_added){
+            FD_SET(netRelay->fd, &fdsetRecv);
+            hSocketMax = std::max(hSocketMax, netRelay->rnode->hSocket);
             have_fds = true;
         }
 
@@ -1350,10 +1386,15 @@ void CConnman::ThreadSocketHandler()
                 if (nBytes > 0)
                 {
                     bool notify = false;
-                    if (!pnode->ReceiveMsgBytes(pchBuf, nBytes, notify))
-                        pnode->CloseSocketDisconnect();
+                    if(pnode->isRelay){
+                        // handle relay receive
+                        netRelay->HandleMessage(pchBuf, nBytes, notify, pnode);
+                    } else {
+                        if (!pnode->ReceiveMsgBytes(pchBuf, nBytes, notify))
+                            pnode->CloseSocketDisconnect();
+                    }
                     RecordBytesRecv(nBytes);
-                    if (notify) {
+                    if (notify) { // this gets called when the message is complete
                         size_t nSizeAdded = 0;
                         auto it(pnode->vRecvMsg.begin());
                         for (; it != pnode->vRecvMsg.end(); ++it) {
@@ -1406,6 +1447,10 @@ void CConnman::ThreadSocketHandler()
             //
             // Inactivity checking
             //
+            // skip for relay
+            if (pnode->isRelay){
+                continue;
+            }
             int64_t nTime = GetSystemTimeInSeconds();
             if (nTime - pnode->nTimeConnected > 60)
             {
@@ -2010,6 +2055,10 @@ void CConnman::ThreadMessageHandler()
             for (CNode* pnode : vNodesCopy) {
                 pnode->AddRef();
             }
+
+            // add rnode from relay net
+            if(netRelay)
+                vNodesCopy.push_back(netRelay->rnode);
         }
 
         bool fMoreWork = false;
@@ -2298,6 +2347,7 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     if (clientInterface)
         clientInterface->InitMessage(_("Loading banlist..."));
     // Load addresses from banlist.dat
+    // TODO: should the master ban client is they behave strangely?
     nStart = GetTimeMillis();
     CBanDB bandb;
     banmap_t banmap;
@@ -2327,6 +2377,13 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
         semAddnode = MakeUnique<CSemaphore>(nMaxAddnode);
     }
 
+    // init the relay net handler if node type is not std
+    netRelay = nullptr;
+    std::string nodetype = gArgs.GetArg("-relaytype", NET_RELAY_NODE_STANDARD);
+    if(nodetype!=NET_RELAY_NODE_STANDARD){
+        netRelay = new Net_relay(gArgs.GetArg("-relaytype", NET_RELAY_NODE_STANDARD), this);
+    }
+
     //
     // Start threads
     //
@@ -2341,7 +2398,7 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     }
 
     // Send and receive from sockets, accept connections
-    threadSocketHandler = std::thread(&TraceThread<std::function<void()> >, "net", std::function<void()>(std::bind(&CConnman::ThreadSocketHandler, this)));
+    threadSocketHandler = std::thread(&TraceThread<std::function<void()> >, "net",   std::function<void()>(std::bind(&CConnman::ThreadSocketHandler, this)));
 
     if (!gArgs.GetBoolArg("-dnsseed", true))
         LogPrintf("DNS seeding disabled\n");
@@ -2414,6 +2471,8 @@ void CConnman::Stop()
 {
     if (threadMessageHandler.joinable())
         threadMessageHandler.join();
+    if (threadRelayHandler.joinable())
+        threadRelayHandler.join();
     if (threadOpenConnections.joinable())
         threadOpenConnections.join();
     if (threadOpenAddedConnections.joinable())
@@ -2719,6 +2778,7 @@ CNode::CNode(NodeId idIn, ServiceFlags nLocalServicesIn, int nMyStartingHeightIn
     m_manual_connection = false;
     fClient = false; // set by version message
     fFeeler = false;
+    isRelay = false; // maybe set by Net_Relay
     fSuccessfullyConnected = false;
     fDisconnect = false;
     nRefCount = 0;
@@ -2809,6 +2869,7 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
 {
     size_t nMessageSize = msg.data.size();
     size_t nTotalSize = nMessageSize + CMessageHeader::HEADER_SIZE;
+
     LogPrint(BCLog::NET, "sending %s (%d bytes) peer=%d\n",  SanitizeString(msg.command.c_str()), nMessageSize, pnode->GetId());
 
     std::vector<unsigned char> serializedHeader;

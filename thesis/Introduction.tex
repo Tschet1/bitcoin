@@ -1,0 +1,36 @@
+%****************************************************************************
+%** Copyright 2002 by Lukas Ruf, ruf@topsy.net
+%** Information is provided under the terms of the
+%** GNU Free Documentation License http://www.gnu.org/copyleft/fdl.html
+%** Fairness: Cite the source of information, visit http://www.topsy.net
+%****************************************************************************
+
+%Example structure for an introduction
+%****************************************************************************
+%** Copyright 2002, 2003 by Lukas Ruf, <ruf@topsy.net>
+%** Information is provided under the terms of the
+%** GNU Free Documentation License <http://www.gnu.org/copyleft/fdl.html>
+%** Fairness: Cite the source of information, visit <http://www.topsy.net>
+%****************************************************************************
+
+\chapter{\label{introduction}Introduction}
+When the bitcoin protocol was designed in 2008, nobody could have imagined that it would become an internationally accepted currency of the size it is today. 10 years later, with a marked cap of 237 billion dollars and 200'000 daily transactions (as of 1.1.18) \cite{bitcoinexplorer}, it is still the largest crypto currency in the world. In the past few years, the term bitcoin has become a synonym for cryptocurrencies. Today, not only technically-versed people but also many individuals around the world are owning bitcoins or another cryptocurrency.
+This fast growth also drew the attention of the research community worldwide. The goal is to keep this global scale experiment of an authority free currency secure against attacks.
+
+
+\section{\label{introduction:motivation}Motivation}
+The value of the bitcoin network and the prominence of the new currency has led to the discovery of various attack vectors in the ecosystem. They include the double spending of bitcoins \cite{rosenfeld2014analysis} or the separation of a part of the bitcoin network as described in \cite{heilman2015eclipse}. There were also concerns about the general assumptions of the protocol in \cite{eyal2014majority}. The decentralised infrastructure and the lack of a central authority render protection mechanisms against such attacks difficult to design. Any alteration on the protocol or the clients running it must be incrementally adaptable by the network while keeping backward compatibility. \\
+M.Apostolaki et al. show in \cite{apostolaki2017hijacking} that BGP hijack attacks against the bitcoin network are feasible. By corrupting the routing tables of routers, traffic in the internet can be distracted from its original path. These attacks are difficult to detect and hard to protect against, because a single node is not able to tell if it is being attacked or not. On the other hand they are able to affect a large amount of clients simultaneously. An attacker is able to separate the bitcoin network to enable double spending of bitcoins or he can delay the block propagation, which will negatively affect the expected revenue of the miners in the isolated part of the network. As a follow up, the same group proposed SABRE, a secure relay network for protecting the bitcoin network against routing attacks in \cite{apostolaki2018}. They show, that a network of strategically placed relay stations in the internet can offer protection against routing based attacks. Their solution is incrementally adoptable by individual protocol participants.\\
+The proposed infrastructure makes use of relay stations in the bitcoin network. As the future of bitcoin or related cryptocurrencies is not clear, this infrastructure must be able to scale beyond the around 10'000 publicly reachable nodes \cite{bitcoinexplorer} and the many more nodes that are connecting though a NAT to the bitcoin network. The current state-of-the-art bitcoin relay network FIBRE \cite{fibre} consists of 5 relay nodes that are geographically distributed across the world and that are connected using fast links. FIBRE reduces the propagation latency by using UDP as a transport protocol and by reducing the need of retransmissions between the relay stations with the help of error correcting codes. However, the fundamental problem of scaling up the relay is not addressed.
+
+\section{\label{introduction:goal}Contribution}
+This thesis aims at designing the changes needed in the state-of-the-art bitcoin client for it to be able to use the SABRE infrastructure and to scale the relay network up to multiple thousands of peers. It makes the following contributions:
+\begin{itemize}
+	\item Profiling of the current standard bitcoin client is performed. We show that the current design is not suited for scaling up. Strong evidence for the bottleneck in the scaling process is presented.
+	\item The bitcoin client is adapted to support the SABRE infrastructure. Additionally, a controller for this infrastructure is created.
+	\item The proposed solution is analysed and we show that it is able to scale with less overhead than the current state-of-the-art bitcoin client.
+\end{itemize}
+
+\section{\label{introduction:overview}Overview}
+The rest of this thesis is structured as follows: In chapter \ref{background}, the most important background knowledge about the bitcoin protocol is presented. In chapter \ref{profiling}, the current state-of-the-art bitcoin client is analysed. We show that the current client has bad scaling properties. We provide strong evidence that the intra-process communication is the limiting factor. The proposed additions to the bitcoin client and the switch controller are presented in chapter \ref{design}. In chapter \ref{evaluation} they are evaluated. Furthermore, the scaling behaviour and the costs of the improved scaling capabilities are presented. We conclude this thesis with an outlook in chapter \ref{outlook} and a summary in chapter \ref{summary}.
+
